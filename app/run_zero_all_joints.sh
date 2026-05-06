@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-CONFIG="${CONFIG:-examples/robot_config.yaml}"
+CONFIG="${CONFIG:-examples/robot_config_repeat.yaml}"
 DURATION="${DURATION:-10}"
 FREQUENCY="${FREQUENCY:-30}"
 MAX_ABS_POSITION="${MAX_ABS_POSITION:-360}"
