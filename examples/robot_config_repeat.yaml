@@ -31,7 +31,7 @@ calibration:
     min_position: -160.0
     max_position: 160.0
   - joint_name: left_arm_joint_2
-    min_position: 0.0
+    min_position: -10.0
     max_position: 90.0
   - joint_name: left_arm_joint_3
     min_position: -150.0
@@ -49,7 +49,7 @@ calibration:
     min_position: -160.0
     max_position: 160.0
   - joint_name: right_arm_joint_2
-    min_position: 0.0
+    min_position: -10.0
     max_position: 90.0
   - joint_name: right_arm_joint_3
     min_position: -150.0
