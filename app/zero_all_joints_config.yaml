@@ -1,0 +1,11 @@
+# Optional motion sequence after all joints have returned to zero.
+# Each inner array must match examples/robot_config.yaml joint_order exactly:
+# left_arm_joint_1..7, then right_arm_joint_1..7.
+
+target_duration: 10.0
+target_positions: []
+
+# Example:
+# target_positions:
+#   - [0, 10, 0, 0, 0, 0, 1, 0, 10, 0, 0, 0, 0, 1]
+#   - [0, -10, 0, 0, 0, 0, 0.5, 0, -10, 0, 0, 0, 0, 0.5]
