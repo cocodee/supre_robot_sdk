@@ -77,7 +77,20 @@ def test_load_motion_config_rejects_non_array_target(tmp_path):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match=r"target_positions\[1\]"):
+    with pytest.raises(ValueError, match=r"target_positions\[0\]"):
+        load_motion_config(config_path, ["j1"])
+
+
+def test_load_motion_config_rejects_missing_yaml_sequence_space(tmp_path):
+    config_path = tmp_path / "motion.yaml"
+    config_path.write_text(
+        """
+        target_positions: -[1]
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"use '- \[\.\.\]'"):
         load_motion_config(config_path, ["j1"])
 
 

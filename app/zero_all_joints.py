@@ -55,6 +55,11 @@ def load_motion_config(path: str | Path, joint_order: list[str]) -> tuple[float 
     if raw_targets is None:
         raw_targets = []
     if not isinstance(raw_targets, list):
+        if isinstance(raw_targets, str) and raw_targets.lstrip().startswith("-["):
+            raise ValueError(
+                "target_positions must be a YAML array of joint position arrays; "
+                "use '- [..]' with a space after '-' instead of '-[..]'."
+            )
         raise ValueError("target_positions must be an array of joint position arrays.")
 
     target_positions = []
