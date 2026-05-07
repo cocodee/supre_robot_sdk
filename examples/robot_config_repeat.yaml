@@ -12,6 +12,58 @@ joint_order:
   - right_arm_joint_5
   - right_arm_joint_6
 
+joint_direction:
+  - 1
+  - 1
+  - 1
+  - -1
+  - 1
+  - -1
+  - 1
+  - -1
+  - 1
+  - 1
+  - 1
+  - -1
+
+calibration:
+  - joint_name: left_arm_joint_1
+    min_position: -160.0
+    max_position: 160.0
+  - joint_name: left_arm_joint_2
+    min_position: -90.0
+    max_position: 0.0
+  - joint_name: left_arm_joint_3
+    min_position: -150.0
+    max_position: 150.0
+  - joint_name: left_arm_joint_4
+    min_position: -90.0
+    max_position: 0.0
+  - joint_name: left_arm_joint_5
+    min_position: -150.0
+    max_position: 150.0
+  - joint_name: left_arm_joint_6
+    min_position: -90.0
+    max_position: 90.0
+  - joint_name: right_arm_joint_1
+    min_position: -160.0
+    max_position: 160.0
+  - joint_name: right_arm_joint_2
+    min_position: 0.0
+    max_position: 90.0
+  - joint_name: right_arm_joint_3
+    min_position: -150.0
+    max_position: 150.0
+  - joint_name: right_arm_joint_4
+    min_position: 0.0
+    max_position: 90.0
+  - joint_name: right_arm_joint_5
+    min_position: -150.0
+    max_position: 150.0
+  - joint_name: right_arm_joint_6
+    min_position: -90.0
+    max_position: 90.0
+
 hardware_interfaces:
   - name: arm_motors
     type: EyouMotorHardware
@@ -33,4 +85,3 @@ hardware_interfaces:
         - { name: right_arm_joint_4, parameters: { node_id: 14 } }
         - { name: right_arm_joint_5, parameters: { node_id: 15 } }
         - { name: right_arm_joint_6, parameters: { node_id: 16 } }
-

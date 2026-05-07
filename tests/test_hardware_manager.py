@@ -1,5 +1,7 @@
 import textwrap
 
+import pytest
+
 from supre_robot_sdk.core.hardware_manager import HardwareManager
 from supre_robot_sdk.hardware.base import HardwareInterface, register_hardware
 
@@ -93,3 +95,48 @@ def test_hardware_manager_read_and_write(tmp_path):
     assert manager._hardware_instances[0].commands[-1] == [10.0, 20.0]
     assert manager._hardware_instances[1].commands[-1] == [0.8]
 
+
+def test_hardware_manager_applies_joint_direction_and_calibration(tmp_path):
+    path = tmp_path / "robot_config.yaml"
+    path.write_text(
+        textwrap.dedent(
+            """
+            joint_order:
+              - joint_1
+              - joint_2
+              - joint_3
+            joint_direction: [1, -1, 1]
+            calibration:
+              - joint_name: joint_2
+                min_position: -5.0
+                max_position: 5.0
+            hardware_interfaces:
+              - name: arm
+                type: FakeArmHardware
+                config:
+                  joints:
+                    - { name: joint_1, parameters: { node_id: 1 } }
+                    - { name: joint_2, parameters: { node_id: 2 } }
+              - name: gripper
+                type: FakeGripperHardware
+                config:
+                  joints:
+                    - { name: joint_3, parameters: { slave_id: 9 } }
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    manager = HardwareManager(path)
+    manager.init()
+    manager.activate()
+
+    positions, _ = manager.read()
+    assert positions == [1.0, -2.0, 0.5]
+
+    manager.write([3.0, -4.0, 0.8])
+    assert manager._hardware_instances[0].commands[-1] == [3.0, 4.0]
+    assert manager._hardware_instances[1].commands[-1] == [0.8]
+
+    with pytest.raises(ValueError, match="outside calibration range"):
+        manager.write([3.0, -6.0, 0.8])

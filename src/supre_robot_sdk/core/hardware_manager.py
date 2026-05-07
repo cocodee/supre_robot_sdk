@@ -23,6 +23,8 @@ class HardwareManager:
         self.control_frequency = float(control_frequency)
         self.use_interpolation = use_interpolation
         self.joint_order = list(self.config.joint_order)
+        self.joint_direction = list(self.config.joint_direction) or [1.0] * len(self.joint_order)
+        self.calibration = dict(self.config.calibration)
         self.num_joints = len(self.joint_order)
         self._hardware_instances: list[HardwareInterface] = []
         self._joint_map: dict[int, dict[str, Any]] = {}
@@ -77,7 +79,7 @@ class HardwareManager:
             result = hw_results[mapping["instance"]][mapping["hw_index"]]
             pos, force = result
             if pos is not None:
-                self.positions[global_index] = float(pos)
+                self.positions[global_index] = float(pos) * self.joint_direction[global_index]
             if force is not None:
                 self.forces[global_index] = float(force)
         return list(self.positions), list(self.forces)
@@ -88,6 +90,7 @@ class HardwareManager:
                 f"Command vector length ({len(command_positions)}) does not match number of joints ({self.num_joints})."
             )
 
+        self._validate_command_positions(command_positions)
         self.commands = list(command_positions)
         hw_commands: dict[HardwareInterface, list[float | None]] = {}
         for instance in self._hardware_instances:
@@ -96,7 +99,7 @@ class HardwareManager:
             mapping = self._joint_map[global_index]
             instance = mapping["instance"]
             hw_index = mapping["hw_index"]
-            hw_commands[instance][hw_index] = command_value
+            hw_commands[instance][hw_index] = command_value * self.joint_direction[global_index]
         for instance, commands in hw_commands.items():
             instance.write(commands)
 
@@ -104,3 +107,13 @@ class HardwareManager:
         for instance in self._hardware_instances:
             instance.set_enable_torque(enable)
 
+    def _validate_command_positions(self, command_positions: list[float]) -> None:
+        for joint_name, command_position in zip(self.joint_order, command_positions):
+            calibration = self.calibration.get(joint_name)
+            if calibration is None:
+                continue
+            if not calibration.min_position <= command_position <= calibration.max_position:
+                raise ValueError(
+                    f"Command for joint '{joint_name}' ({command_position:.3f}) is outside calibration range "
+                    f"[{calibration.min_position:.3f}, {calibration.max_position:.3f}]."
+                )
