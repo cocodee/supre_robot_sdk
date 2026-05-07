@@ -188,6 +188,21 @@ def move_all_joints_to_zero_then_target(args: argparse.Namespace) -> None:
             execute_trajectory(robot, target_trajectory, frequency=args.frequency)
             robot.send_joint_positions(target_positions)
             print(f"Configured target {target_index} reached.")
+
+        if target_sequence:
+            return_trajectory = build_zero_trajectory(
+                robot.get_joint_positions(),
+                duration=target_duration,
+                frequency=args.frequency,
+                max_step=args.max_step,
+            )
+            print(
+                f"Returning {len(robot.joint_order)} joints to zero over "
+                f"{len(return_trajectory) / args.frequency:.2f}s"
+            )
+            execute_trajectory(robot, return_trajectory, frequency=args.frequency)
+            robot.send_joint_positions({joint: 0.0 for joint in robot.joint_order})
+            print("All commanded joint positions are zero.")
     finally:
         robot.disconnect()
         print("Robot disconnected.")
