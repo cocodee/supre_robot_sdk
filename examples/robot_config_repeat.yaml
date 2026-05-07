@@ -13,18 +13,18 @@ joint_order:
   - right_arm_joint_6
 
 joint_direction:
-  - 1
-  - 1
-  - 1
   - -1
-  - 1
-  - -1
-  - 1
   - -1
   - 1
   - 1
   - 1
-  - -1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
 
 calibration:
   - joint_name: left_arm_joint_1
