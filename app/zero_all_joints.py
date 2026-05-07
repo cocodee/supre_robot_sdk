@@ -58,7 +58,7 @@ def load_motion_config(path: str | Path, joint_order: list[str]) -> tuple[float 
         raise ValueError("target_positions must be an array of joint position arrays.")
 
     target_positions = []
-    for index, raw_target in enumerate(raw_targets, start=1):
+    for index, raw_target in enumerate(raw_targets, start=0):
         if not isinstance(raw_target, list):
             raise ValueError(f"target_positions[{index}] must be a joint position array.")
         target_positions.append(parse_position_array(raw_target, joint_order))
@@ -167,7 +167,7 @@ def move_all_joints_to_zero_then_target(args: argparse.Namespace) -> None:
 
         configured_duration, target_sequence = load_motion_config(args.motion_config, robot.joint_order)
         target_duration = configured_duration if configured_duration is not None else args.target_duration
-        for target_index, target_positions in enumerate(target_sequence, start=1):
+        for target_index, target_positions in enumerate(target_sequence, start=0):
             validate_positions(target_positions, max_abs_position=args.max_abs_position)
             target_trajectory = build_joint_trajectory(
                 robot.get_joint_positions(),
