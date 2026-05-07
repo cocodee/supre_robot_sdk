@@ -3,7 +3,7 @@
 # left_arm_joint_1..7, then right_arm_joint_1..7.
 
 target_duration: 10.0
-target_positions: []
+target_positions: [0, 30, 0, 45, 0, 0, 0, 30, 0, 45, 0, 0]
 
 # Example:
 # target_positions:
