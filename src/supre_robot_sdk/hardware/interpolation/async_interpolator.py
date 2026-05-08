@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 import time
 from typing import Any
 
 from supre_robot_sdk.hardware.base import HardwareInterface
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncInterpolator(HardwareInterface):
@@ -114,8 +117,10 @@ class AsyncInterpolator(HardwareInterface):
             except queue.Empty:
                 pass
 
-            self._base_hardware.write(interpolated_positions)
+            try:
+                self._base_hardware.write(interpolated_positions)
+            except Exception:
+                logger.exception("AsyncInterpolator writer failed to write joint commands")
             sleep_time = period - (time.perf_counter() - loop_start)
             if sleep_time > 0:
                 time.sleep(sleep_time)
-
