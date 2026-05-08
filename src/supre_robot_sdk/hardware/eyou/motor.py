@@ -24,7 +24,9 @@ class EyouMotorHardware(HardwareInterface):
         self.hw_states_velocities_: list[float] = []
         self.hw_states_torques_: list[float] = []
         self.hw_commands_positions_: list[float] = []
+        self.hw_commands_torques_: list[float] = []
         self.hw_start_enabled_: list[bool] = []
+        self._torque_use_sync = True
         self._config: dict[str, Any] = {}
         self._last_log_time = time.monotonic()
         self._max_write_duration_us = 0.0
@@ -52,6 +54,7 @@ class EyouMotorHardware(HardwareInterface):
             self.hw_states_velocities_ = [0.0] * num_joints
             self.hw_states_torques_ = [0.0] * num_joints
             self.hw_commands_positions_ = [0.0] * num_joints
+            self.hw_commands_torques_ = [0.0] * num_joints
             self.hw_start_enabled_ = [True] * num_joints
 
             self.can_manager_ = eu_motor_py.CanNetworkManager()
@@ -159,3 +162,31 @@ class EyouMotorHardware(HardwareInterface):
                 motor.disable()
                 self.hw_start_enabled_[index] = False
 
+    def supports_torque_control(self) -> bool:
+        return True
+
+    def configure_torque_control(self, interpolation_period_ms: int = 4, use_sync: bool = True) -> None:
+        self._torque_use_sync = bool(use_sync)
+        for index, motor in enumerate(self.motor_nodes_):
+            if not self.hw_start_enabled_[index]:
+                continue
+            if not all(
+                [
+                    motor.clear_fault(),
+                    motor.configure_cst_mode(int(interpolation_period_ms), 0, self._torque_use_sync),
+                    motor.start_auto_feedback(0, 255, 20),
+                    motor.start_error_feedback_tpdo(1, 255, 60),
+                ]
+            ):
+                raise RuntimeError(f"Failed to configure torque control for joint {self.joint_names_[index]}")
+
+    def write_torques(self, commands_torque_milli: list[float | None]) -> None:
+        if len(commands_torque_milli) != len(self.motor_nodes_):
+            raise ValueError("Torque command length does not match number of motors.")
+        if any(value is None for value in commands_torque_milli):
+            raise ValueError("EyouMotorHardware requires dense float torque command vectors.")
+
+        self.hw_commands_torques_ = [float(value) for value in commands_torque_milli]  # type: ignore[arg-type]
+        for index, motor in enumerate(self.motor_nodes_):
+            if self.hw_start_enabled_[index]:
+                motor.send_cst_target_torque(int(round(self.hw_commands_torques_[index])), 0, self._torque_use_sync)

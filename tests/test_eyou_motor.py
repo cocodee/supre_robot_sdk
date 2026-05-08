@@ -23,6 +23,8 @@ class FakeMotorNode:
         self.disabled = False
         self.position = float(node_id)
         self.commands = []
+        self.torque_commands = []
+        self.cst_configs = []
 
     def get_position(self):
         return self.position
@@ -39,6 +41,10 @@ class FakeMotorNode:
     def configure_csp_mode(self, *_args):
         return True
 
+    def configure_cst_mode(self, *args):
+        self.cst_configs.append(args)
+        return True
+
     def start_auto_feedback(self, *_args):
         return True
 
@@ -51,6 +57,9 @@ class FakeMotorNode:
     def send_csp_target_position(self, position, *_args):
         self.commands.append(position)
         return 0
+
+    def send_cst_target_torque(self, torque, *args):
+        self.torque_commands.append((torque, *args))
 
     def disable(self):
         self.disabled = True
@@ -108,3 +117,32 @@ def test_eyou_init_activate_read_write(monkeypatch):
     hardware.set_enable_torque(True)
     assert hardware.hw_start_enabled_ == [True, True]
 
+
+def test_eyou_torque_control(monkeypatch):
+    monkeypatch.setattr(motor_module, "eu_motor_py", build_fake_module())
+    hardware = EyouMotorHardware()
+    assert hardware.init(
+        {
+            "can_device_index": 1,
+            "can_baud_rate": "1M",
+            "joints": [
+                {"name": "joint_1", "parameters": {"node_id": 21}},
+                {"name": "joint_2", "parameters": {"node_id": 22, "start_enabled": False}},
+            ],
+        }
+    )
+    assert hardware.activate() is True
+    assert hardware.supports_torque_control() is True
+
+    hardware.configure_torque_control(interpolation_period_ms=4, use_sync=True)
+    assert hardware.motor_nodes_[0].cst_configs == [(4, 0, True)]
+    assert hardware.motor_nodes_[1].cst_configs == []
+
+    hardware.write_torques([50.4, -20.0])
+    assert hardware.motor_nodes_[0].torque_commands == [(50, 0, True)]
+    assert hardware.motor_nodes_[1].torque_commands == []
+
+    with pytest.raises(ValueError, match="length"):
+        hardware.write_torques([1.0])
+    with pytest.raises(ValueError, match="dense"):
+        hardware.write_torques([1.0, None])

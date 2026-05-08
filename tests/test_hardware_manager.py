@@ -31,6 +31,23 @@ class FakeArmHardware(HardwareInterface):
         return 2
 
 
+@register_hardware("FakeTorqueArmHardware")
+class FakeTorqueArmHardware(FakeArmHardware):
+    def __init__(self):
+        super().__init__()
+        self.torque_configs = []
+        self.torque_commands = []
+
+    def supports_torque_control(self):
+        return True
+
+    def configure_torque_control(self, interpolation_period_ms=4, use_sync=True):
+        self.torque_configs.append((interpolation_period_ms, use_sync))
+
+    def write_torques(self, commands_torque_milli):
+        self.torque_commands.append(list(commands_torque_milli))
+
+
 @register_hardware("FakeGripperHardware")
 class FakeGripperHardware(HardwareInterface):
     def __init__(self):
@@ -140,3 +157,48 @@ def test_hardware_manager_applies_joint_direction_and_calibration(tmp_path):
 
     with pytest.raises(ValueError, match="outside calibration range"):
         manager.write([3.0, -6.0, 0.8])
+
+
+def test_hardware_manager_writes_torques_with_joint_direction(tmp_path):
+    path = tmp_path / "robot_config.yaml"
+    path.write_text(
+        textwrap.dedent(
+            """
+            joint_order:
+              - joint_1
+              - joint_2
+              - joint_3
+            joint_direction: [1, -1, 1]
+            hardware_interfaces:
+              - name: arm
+                type: FakeTorqueArmHardware
+                config:
+                  joints:
+                    - { name: joint_1, parameters: { node_id: 1 } }
+                    - { name: joint_2, parameters: { node_id: 2 } }
+              - name: gripper
+                type: FakeGripperHardware
+                config:
+                  joints:
+                    - { name: joint_3, parameters: { slave_id: 9 } }
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    manager = HardwareManager(path)
+    manager.init()
+    manager.activate()
+
+    assert manager.supports_torque_control() is True
+    assert manager.supports_torque_control("joint_1") is True
+    assert manager.supports_torque_control("joint_3") is False
+    manager.configure_torque_control(interpolation_period_ms=4, use_sync=False)
+    manager.write_torques([10.0, -20.0, None])
+
+    arm = manager._hardware_instances[0]
+    assert arm.torque_configs == [(4, False)]
+    assert arm.torque_commands == [[10.0, 20.0]]
+
+    with pytest.raises(RuntimeError, match="does not support torque control"):
+        manager.write_torques([None, None, 1.0])

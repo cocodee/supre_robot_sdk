@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +106,46 @@ class HardwareManager:
         for instance in self._hardware_instances:
             instance.set_enable_torque(enable)
 
+    def supports_torque_control(self, joint_name: str | None = None) -> bool:
+        if joint_name is None:
+            return any(instance.supports_torque_control() for instance in self._hardware_instances)
+        global_index = self._joint_index(joint_name)
+        instance = self._joint_map[global_index]["instance"]
+        return instance.supports_torque_control()
+
+    def configure_torque_control(self, interpolation_period_ms: int = 4, use_sync: bool = True) -> None:
+        configured = False
+        for instance in self._hardware_instances:
+            if instance.supports_torque_control():
+                instance.configure_torque_control(interpolation_period_ms, use_sync)
+                configured = True
+        if not configured:
+            raise RuntimeError("No configured hardware supports torque control.")
+
+    def write_torques(self, command_torques_milli: list[float | None]) -> None:
+        if len(command_torques_milli) != self.num_joints:
+            raise ValueError(
+                f"Torque command vector length ({len(command_torques_milli)}) does not match number of joints "
+                f"({self.num_joints})."
+            )
+
+        hw_commands: dict[HardwareInterface, list[float | None]] = {}
+        for instance in self._hardware_instances:
+            hw_commands[instance] = [None] * instance.get_joint_count()
+        for global_index, command_value in enumerate(command_torques_milli):
+            if command_value is None:
+                continue
+            mapping = self._joint_map[global_index]
+            instance = mapping["instance"]
+            if not instance.supports_torque_control():
+                raise RuntimeError(f"Joint '{self.joint_order[global_index]}' does not support torque control.")
+            hw_index = mapping["hw_index"]
+            hw_commands[instance][hw_index] = float(command_value) * self.joint_direction[global_index]
+        for instance, commands in hw_commands.items():
+            if instance.supports_torque_control() and any(value is not None for value in commands):
+                dense_commands = [0.0 if value is None else value for value in commands]
+                instance.write_torques(dense_commands)
+
     def _validate_command_positions(self, command_positions: list[float]) -> None:
         for joint_name, command_position in zip(self.joint_order, command_positions):
             calibration = self.calibration.get(joint_name)
@@ -117,3 +156,9 @@ class HardwareManager:
                     f"Command for joint '{joint_name}' ({command_position:.3f}) is outside calibration range "
                     f"[{calibration.min_position:.3f}, {calibration.max_position:.3f}]."
                 )
+
+    def _joint_index(self, joint_name: str) -> int:
+        try:
+            return self.joint_order.index(joint_name)
+        except ValueError as exc:
+            raise KeyError(f"Unknown joint: {joint_name}") from exc

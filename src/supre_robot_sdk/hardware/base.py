@@ -51,3 +51,13 @@ class HardwareInterface(ABC):
     def set_enable_torque(self, enable: bool) -> None:
         del enable
 
+    def supports_torque_control(self) -> bool:
+        return False
+
+    def configure_torque_control(self, interpolation_period_ms: int = 4, use_sync: bool = True) -> None:
+        del interpolation_period_ms, use_sync
+        raise NotImplementedError(f"{self.__class__.__name__} does not support torque control.")
+
+    def write_torques(self, commands_torque_milli: list[float | None]) -> None:
+        del commands_torque_milli
+        raise NotImplementedError(f"{self.__class__.__name__} does not support torque control.")

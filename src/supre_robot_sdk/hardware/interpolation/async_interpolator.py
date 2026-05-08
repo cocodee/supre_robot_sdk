@@ -97,6 +97,15 @@ class AsyncInterpolator(HardwareInterface):
     def set_enable_torque(self, enable: bool) -> None:
         self._base_hardware.set_enable_torque(enable)
 
+    def supports_torque_control(self) -> bool:
+        return self._base_hardware.supports_torque_control()
+
+    def configure_torque_control(self, interpolation_period_ms: int = 4, use_sync: bool = True) -> None:
+        self._base_hardware.configure_torque_control(interpolation_period_ms, use_sync)
+
+    def write_torques(self, commands_torque_milli: list[float | None]) -> None:
+        self._base_hardware.write_torques(commands_torque_milli)
+
     def _writer_loop(self) -> None:
         assert self._stop_event is not None
         assert self._command_queue is not None

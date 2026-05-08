@@ -9,6 +9,8 @@ class RobotArmHardware(HardwareInterface):
     def __init__(self):
         self.state = [1.0, 2.0]
         self.commands = []
+        self.torque_configs = []
+        self.torque_commands = []
 
     def init(self, config):
         self.config = config
@@ -29,6 +31,15 @@ class RobotArmHardware(HardwareInterface):
 
     def get_joint_count(self):
         return 2
+
+    def supports_torque_control(self):
+        return True
+
+    def configure_torque_control(self, interpolation_period_ms=4, use_sync=True):
+        self.torque_configs.append((interpolation_period_ms, use_sync))
+
+    def write_torques(self, commands_torque_milli):
+        self.torque_commands.append(list(commands_torque_milli))
 
 
 @register_hardware("RobotGripperHardware")
@@ -98,6 +109,14 @@ def test_supre_robot_facade(tmp_path, monkeypatch):
     assert robot.get_joint_positions()["left_arm_joint_7"] == 1.0
     robot.execute_trajectory({"left_arm_joint_1": 3.0}, duration=0.05)
     assert robot.get_joint_positions()["left_arm_joint_1"] == 3.0
+    assert robot.supports_torque_control() is True
+    assert robot.supports_torque_control("right_arm_joint_1") is True
+    assert robot.supports_torque_control("left_arm_joint_7") is False
+    robot.configure_torque_control(interpolation_period_ms=4, use_sync=False)
+    robot.send_joint_torques({"left_arm_joint_1": 10.0, "right_arm_joint_1": -20.0})
+    assert robot._manager._hardware_instances[0].torque_configs == [(4, False)]
+    assert robot._manager._hardware_instances[0].torque_commands[-1] == [10.0, -20.0]
+    robot.send_joint_torque("right_arm_joint_1", 5.0)
+    assert robot._manager._hardware_instances[0].torque_commands[-1] == [0.0, 5.0]
     robot.disconnect()
     assert robot.is_connected is False
-

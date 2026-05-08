@@ -74,6 +74,26 @@ class SupreRobot(RobotInterface):
         manager = self._require_manager()
         manager.set_enable_torque(enable)
 
+    def supports_torque_control(self, joint_name: str | None = None) -> bool:
+        manager = self._require_manager()
+        return manager.supports_torque_control(joint_name)
+
+    def configure_torque_control(self, interpolation_period_ms: int = 4, use_sync: bool = True) -> None:
+        manager = self._require_manager()
+        manager.configure_torque_control(interpolation_period_ms, use_sync)
+
+    def send_joint_torques(self, torques_milli: dict[str, float]) -> None:
+        manager = self._require_manager()
+        targets: list[float | None] = [None] * len(manager.joint_order)
+        for joint_name, torque_milli in torques_milli.items():
+            if joint_name not in manager.joint_order:
+                raise KeyError(f"Unknown joint: {joint_name}")
+            targets[manager.joint_order.index(joint_name)] = float(torque_milli)
+        manager.write_torques(targets)
+
+    def send_joint_torque(self, joint_name: str, torque_milli: float) -> None:
+        self.send_joint_torques({joint_name: torque_milli})
+
     def move_joint(self, joint_name: str, target: float) -> None:
         self.send_joint_positions({joint_name: target})
 
@@ -129,4 +149,3 @@ class SupreRobot(RobotInterface):
         if self._manager is None or not self._is_connected:
             raise NotConnectedError("Robot is not connected.")
         return self._manager
-
