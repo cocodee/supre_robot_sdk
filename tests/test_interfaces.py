@@ -32,6 +32,7 @@ def test_register_hardware_decorator():
 
     assert HARDWARE_PLUGIN_MAP["TestHardware"] is TestHardware
     hardware = TestHardware()
+    assert hardware.get_control_mode() == "position"
     assert hardware.supports_torque_control() is False
     with pytest.raises(NotImplementedError):
         hardware.configure_torque_control()

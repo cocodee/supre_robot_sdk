@@ -74,6 +74,10 @@ class SupreRobot(RobotInterface):
         manager = self._require_manager()
         manager.set_enable_torque(enable)
 
+    def get_control_mode(self, joint_name: str | None = None) -> str | dict[str, str]:
+        manager = self._require_manager()
+        return manager.get_control_mode(joint_name)
+
     def supports_torque_control(self, joint_name: str | None = None) -> bool:
         manager = self._require_manager()
         return manager.supports_torque_control(joint_name)

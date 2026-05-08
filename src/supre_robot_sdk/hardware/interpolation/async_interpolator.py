@@ -97,6 +97,9 @@ class AsyncInterpolator(HardwareInterface):
     def set_enable_torque(self, enable: bool) -> None:
         self._base_hardware.set_enable_torque(enable)
 
+    def get_control_mode(self) -> str:
+        return self._base_hardware.get_control_mode()
+
     def supports_torque_control(self) -> bool:
         return self._base_hardware.supports_torque_control()
 

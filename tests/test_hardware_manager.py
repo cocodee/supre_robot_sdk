@@ -37,15 +37,20 @@ class FakeTorqueArmHardware(FakeArmHardware):
         super().__init__()
         self.torque_configs = []
         self.torque_commands = []
+        self.control_mode = "position"
 
     def supports_torque_control(self):
         return True
 
     def configure_torque_control(self, interpolation_period_ms=4, use_sync=True):
+        self.control_mode = "torque"
         self.torque_configs.append((interpolation_period_ms, use_sync))
 
     def write_torques(self, commands_torque_milli):
         self.torque_commands.append(list(commands_torque_milli))
+
+    def get_control_mode(self):
+        return self.control_mode
 
 
 @register_hardware("FakeGripperHardware")
@@ -193,7 +198,19 @@ def test_hardware_manager_writes_torques_with_joint_direction(tmp_path):
     assert manager.supports_torque_control() is True
     assert manager.supports_torque_control("joint_1") is True
     assert manager.supports_torque_control("joint_3") is False
+    assert manager.get_control_mode("joint_1") == "position"
+    assert manager.get_control_mode() == {
+        "joint_1": "position",
+        "joint_2": "position",
+        "joint_3": "position",
+    }
     manager.configure_torque_control(interpolation_period_ms=4, use_sync=False)
+    assert manager.get_control_mode("joint_1") == "torque"
+    assert manager.get_control_mode() == {
+        "joint_1": "torque",
+        "joint_2": "torque",
+        "joint_3": "position",
+    }
     manager.write_torques([10.0, -20.0, None])
 
     arm = manager._hardware_instances[0]

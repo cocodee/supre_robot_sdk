@@ -24,6 +24,7 @@ class FakeMotorNode:
         self.position = float(node_id)
         self.commands = []
         self.torque_commands = []
+        self.csp_configs = []
         self.cst_configs = []
 
     def get_position(self):
@@ -38,7 +39,8 @@ class FakeMotorNode:
     def clear_fault(self):
         return True
 
-    def configure_csp_mode(self, *_args):
+    def configure_csp_mode(self, *args):
+        self.csp_configs.append(args)
         return True
 
     def configure_cst_mode(self, *args):
@@ -110,6 +112,7 @@ def test_eyou_init_activate_read_write(monkeypatch):
     )
     assert hardware.activate() is True
     assert hardware.get_joint_count() == 2
+    assert hardware.get_control_mode() == "position"
     assert hardware.read()[0][0] == 12.5
     hardware.write([1.0, 2.0])
     assert hardware.motor_nodes_[0].commands == [1.0]
@@ -135,6 +138,7 @@ def test_eyou_torque_control(monkeypatch):
     assert hardware.supports_torque_control() is True
 
     hardware.configure_torque_control(interpolation_period_ms=4, use_sync=True)
+    assert hardware.get_control_mode() == "torque"
     assert hardware.motor_nodes_[0].cst_configs == [(4, 0, True)]
     assert hardware.motor_nodes_[1].cst_configs == []
 
@@ -146,3 +150,51 @@ def test_eyou_torque_control(monkeypatch):
         hardware.write_torques([1.0])
     with pytest.raises(ValueError, match="dense"):
         hardware.write_torques([1.0, None])
+
+
+def test_eyou_activate_can_start_in_torque_control_mode(monkeypatch):
+    monkeypatch.setattr(motor_module, "eu_motor_py", build_fake_module())
+    hardware = EyouMotorHardware()
+    assert hardware.init(
+        {
+            "can_device_index": 1,
+            "can_baud_rate": "1M",
+            "control_mode": "torque",
+            "torque_interpolation_period_ms": 8,
+            "torque_use_sync": False,
+            "joints": [
+                {"name": "joint_1", "parameters": {"node_id": 21}},
+                {"name": "joint_2", "parameters": {"node_id": 22, "start_enabled": False}},
+            ],
+        }
+    )
+
+    assert hardware.activate() is True
+    assert hardware.get_control_mode() == "torque"
+    assert hardware.motor_nodes_[0].cst_configs == [(8, 0, False)]
+    assert hardware.motor_nodes_[0].csp_configs == []
+    assert hardware.motor_nodes_[1].cst_configs == []
+
+
+def test_eyou_set_enable_torque_preserves_torque_control_mode(monkeypatch):
+    monkeypatch.setattr(motor_module, "eu_motor_py", build_fake_module())
+    hardware = EyouMotorHardware()
+    assert hardware.init(
+        {
+            "can_device_index": 1,
+            "can_baud_rate": "1M",
+            "joints": [
+                {"name": "joint_1", "parameters": {"node_id": 21}},
+                {"name": "joint_2", "parameters": {"node_id": 22, "start_enabled": False}},
+            ],
+        }
+    )
+    assert hardware.activate() is True
+    hardware.configure_torque_control(interpolation_period_ms=8, use_sync=False)
+
+    hardware.set_enable_torque(False)
+    hardware.set_enable_torque(True)
+
+    assert hardware.motor_nodes_[0].cst_configs[-1] == (8, 0, False)
+    assert hardware.motor_nodes_[1].cst_configs[-1] == (8, 0, False)
+    assert hardware.hw_start_enabled_ == [True, True]

@@ -106,6 +106,18 @@ class HardwareManager:
         for instance in self._hardware_instances:
             instance.set_enable_torque(enable)
 
+    def get_control_mode(self, joint_name: str | None = None) -> str | dict[str, str]:
+        if joint_name is not None:
+            global_index = self._joint_index(joint_name)
+            instance = self._joint_map[global_index]["instance"]
+            return instance.get_control_mode()
+
+        modes: dict[str, str] = {}
+        for global_index, name in enumerate(self.joint_order):
+            instance = self._joint_map[global_index]["instance"]
+            modes[name] = instance.get_control_mode()
+        return modes
+
     def supports_torque_control(self, joint_name: str | None = None) -> bool:
         if joint_name is None:
             return any(instance.supports_torque_control() for instance in self._hardware_instances)

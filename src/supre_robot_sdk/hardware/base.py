@@ -51,6 +51,9 @@ class HardwareInterface(ABC):
     def set_enable_torque(self, enable: bool) -> None:
         del enable
 
+    def get_control_mode(self) -> str:
+        return "position"
+
     def supports_torque_control(self) -> bool:
         return False
 

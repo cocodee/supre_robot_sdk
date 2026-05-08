@@ -26,6 +26,8 @@ class EyouMotorHardware(HardwareInterface):
         self.hw_commands_positions_: list[float] = []
         self.hw_commands_torques_: list[float] = []
         self.hw_start_enabled_: list[bool] = []
+        self._control_mode = "position"
+        self._torque_interpolation_period_ms = 4
         self._torque_use_sync = True
         self._config: dict[str, Any] = {}
         self._last_log_time = time.monotonic()
@@ -37,6 +39,11 @@ class EyouMotorHardware(HardwareInterface):
 
         self._config = dict(config)
         try:
+            self._control_mode = self._normalize_control_mode(self._config.get("control_mode", "position"))
+            self._torque_interpolation_period_ms = int(
+                self._config.get("torque_interpolation_period_ms", self._torque_interpolation_period_ms)
+            )
+            self._torque_use_sync = str(self._config.get("torque_use_sync", self._torque_use_sync)).lower() != "false"
             can_device_index = int(self._config["can_device_index"])
             baud_rate_str = self._config["can_baud_rate"]
             baud_rate_map = {
@@ -87,14 +94,7 @@ class EyouMotorHardware(HardwareInterface):
 
             for index, motor in enumerate(self.motor_nodes_):
                 if self.hw_start_enabled_[index]:
-                    if not all(
-                        [
-                            motor.clear_fault(),
-                            motor.configure_csp_mode(0, False),
-                            motor.start_auto_feedback(0, 255, 20),
-                            motor.start_error_feedback_tpdo(1, 255, 60),
-                        ]
-                    ):
+                    if not self._configure_enabled_motor(index, start_feedback=True):
                         return False
                 else:
                     motor.disable()
@@ -155,29 +155,27 @@ class EyouMotorHardware(HardwareInterface):
                 current_real_pos = float(motor.get_position())
                 self.hw_commands_positions_[index] = current_real_pos
                 self.hw_states_positions_[index] = current_real_pos
-                motor.clear_fault()
-                motor.configure_csp_mode(0, False)
+                if not self._configure_enabled_motor(index, start_feedback=False):
+                    raise RuntimeError(f"Failed to enable joint {self.joint_names_[index]}")
                 self.hw_start_enabled_[index] = True
             else:
                 motor.disable()
                 self.hw_start_enabled_[index] = False
 
+    def get_control_mode(self) -> str:
+        return self._control_mode
+
     def supports_torque_control(self) -> bool:
         return True
 
     def configure_torque_control(self, interpolation_period_ms: int = 4, use_sync: bool = True) -> None:
+        self._control_mode = "torque"
+        self._torque_interpolation_period_ms = int(interpolation_period_ms)
         self._torque_use_sync = bool(use_sync)
         for index, motor in enumerate(self.motor_nodes_):
             if not self.hw_start_enabled_[index]:
                 continue
-            if not all(
-                [
-                    motor.clear_fault(),
-                    motor.configure_cst_mode(int(interpolation_period_ms), 0, self._torque_use_sync),
-                    motor.start_auto_feedback(0, 255, 20),
-                    motor.start_error_feedback_tpdo(1, 255, 60),
-                ]
-            ):
+            if not self._configure_torque_mode(motor, start_feedback=True):
                 raise RuntimeError(f"Failed to configure torque control for joint {self.joint_names_[index]}")
 
     def write_torques(self, commands_torque_milli: list[float | None]) -> None:
@@ -190,3 +188,51 @@ class EyouMotorHardware(HardwareInterface):
         for index, motor in enumerate(self.motor_nodes_):
             if self.hw_start_enabled_[index]:
                 motor.send_cst_target_torque(int(round(self.hw_commands_torques_[index])), 0, self._torque_use_sync)
+
+    @staticmethod
+    def _normalize_control_mode(raw_mode: Any) -> str:
+        mode = str(raw_mode).strip().lower()
+        aliases = {
+            "position": "position",
+            "csp": "position",
+            "torque": "torque",
+            "cst": "torque",
+        }
+        if mode not in aliases:
+            raise ValueError(f"Unsupported Eyou motor control_mode: {raw_mode!r}")
+        return aliases[mode]
+
+    def _configure_enabled_motor(self, index: int, *, start_feedback: bool) -> bool:
+        motor = self.motor_nodes_[index]
+        if self._control_mode == "torque":
+            return self._configure_torque_mode(motor, start_feedback=start_feedback)
+        return self._configure_position_mode(motor, start_feedback=start_feedback)
+
+    @staticmethod
+    def _configure_position_mode(motor: Any, *, start_feedback: bool) -> bool:
+        steps = [
+            motor.clear_fault(),
+            motor.configure_csp_mode(0, False),
+        ]
+        if start_feedback:
+            steps.extend(
+                [
+                    motor.start_auto_feedback(0, 255, 20),
+                    motor.start_error_feedback_tpdo(1, 255, 60),
+                ]
+            )
+        return all(steps)
+
+    def _configure_torque_mode(self, motor: Any, *, start_feedback: bool) -> bool:
+        steps = [
+            motor.clear_fault(),
+            motor.configure_cst_mode(self._torque_interpolation_period_ms, 0, self._torque_use_sync),
+        ]
+        if start_feedback:
+            steps.extend(
+                [
+                    motor.start_auto_feedback(0, 255, 20),
+                    motor.start_error_feedback_tpdo(1, 255, 60),
+                ]
+            )
+        return all(steps)
