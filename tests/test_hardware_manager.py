@@ -96,6 +96,18 @@ def test_hardware_manager_read_and_write(tmp_path):
     assert manager._hardware_instances[1].commands[-1] == [0.8]
 
 
+def test_hardware_manager_diagnose_aggregates_interfaces(tmp_path):
+    manager = HardwareManager(write_config(tmp_path))
+    manager.init()
+
+    diagnostics = manager.diagnose()
+
+    assert diagnostics["ok"] is True
+    assert diagnostics["joint_order"] == ["joint_1", "joint_2", "joint_3"]
+    assert [item["name"] for item in diagnostics["interfaces"]] == ["arm", "gripper"]
+    assert diagnostics["interfaces"][0]["configured_type"] == "FakeArmHardware"
+
+
 def test_hardware_manager_applies_joint_direction_and_calibration(tmp_path):
     path = tmp_path / "robot_config.yaml"
     path.write_text(

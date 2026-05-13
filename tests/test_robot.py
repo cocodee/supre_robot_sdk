@@ -98,6 +98,8 @@ def test_supre_robot_facade(tmp_path, monkeypatch):
     assert robot.get_joint_positions()["left_arm_joint_7"] == 1.0
     robot.execute_trajectory({"left_arm_joint_1": 3.0}, duration=0.05)
     assert robot.get_joint_positions()["left_arm_joint_1"] == 3.0
+    diagnostics = robot.diagnose_hardware()
+    assert diagnostics["ok"] is True
+    assert diagnostics["connected"] is True
     robot.disconnect()
     assert robot.is_connected is False
-

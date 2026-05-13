@@ -51,3 +51,11 @@ class HardwareInterface(ABC):
     def set_enable_torque(self, enable: bool) -> None:
         del enable
 
+    def diagnose(self) -> dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+            "ok": True,
+            "message": "No hardware-specific diagnostics are available.",
+            "joints": [],
+            "events": [],
+        }
