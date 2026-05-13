@@ -71,6 +71,30 @@ class HardwareManager:
         for instance in self._hardware_instances:
             instance.deactivate()
 
+    def diagnose(self) -> dict[str, Any]:
+        interfaces = []
+        for index, instance in enumerate(self._hardware_instances):
+            interface_cfg = self.config.hardware_interfaces[index]
+            try:
+                diagnostics = instance.diagnose()
+            except Exception as exc:
+                diagnostics = {
+                    "type": instance.__class__.__name__,
+                    "ok": False,
+                    "message": f"Failed to collect diagnostics: {exc}",
+                    "suggestion": "Check hardware driver state and retry diagnostics.",
+                    "joints": [],
+                    "events": [],
+                }
+            diagnostics["name"] = interface_cfg.name
+            diagnostics["configured_type"] = interface_cfg.type
+            interfaces.append(diagnostics)
+        return {
+            "ok": all(interface.get("ok", False) for interface in interfaces),
+            "joint_order": list(self.joint_order),
+            "interfaces": interfaces,
+        }
+
     def read(self) -> tuple[list[float], list[float]]:
         hw_results = {instance: instance.read() for instance in self._hardware_instances}
         for global_index in range(self.num_joints):

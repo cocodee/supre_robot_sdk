@@ -1,7 +1,15 @@
-urdf_path: "/path/to/robot.urdf"
+urdf_path: "/home/kdi/workspace/supre_robot_assets/assets/robots/RJ2506/urdf/relpath_RJ2506.urdf"
 frequency: 250.0
 interpolation_period_ms: 4
-max_abs_torque_milli: 300.0
+max_abs_torque_milli: 100.0
+max_torque_step_milli: 5.0
+ramp_duration_s: 5.0
+max_position_step_deg: 5.0
+max_velocity_deg_s: 90.0
+initial_move_duration_s: 10.0
+initial_move_frequency: 30.0
+initial_move_max_step_deg: 2.0
+max_initial_deviation_deg: 10.0
 
 controlled_joints:
   - left_arm_joint_1
@@ -30,3 +38,31 @@ rated_torque_nm:
   right_arm_joint_4: 20.0
   right_arm_joint_5: 20.0
   right_arm_joint_6: 20.0
+
+torque_scale:
+  left_arm_joint_1: 0.1
+  left_arm_joint_2: 0.1
+  left_arm_joint_3: 0.1
+  left_arm_joint_4: 0.1
+  left_arm_joint_5: 0.1
+  left_arm_joint_6: 0.1
+  right_arm_joint_1: 0.1
+  right_arm_joint_2: 0.1
+  right_arm_joint_3: 0.1
+  right_arm_joint_4: 0.1
+  right_arm_joint_5: 0.1
+  right_arm_joint_6: 0.1
+
+initial_positions_deg:
+  left_arm_joint_1: 0.0
+  left_arm_joint_2: -45.0
+  left_arm_joint_3: 0.0
+  left_arm_joint_4: -45.0
+  left_arm_joint_5: 0.0
+  left_arm_joint_6: 0.0
+  right_arm_joint_1: 0.0
+  right_arm_joint_2: 45.0
+  right_arm_joint_3: 0.0
+  right_arm_joint_4: 45.0
+  right_arm_joint_5: 0.0
+  right_arm_joint_6: 0.0

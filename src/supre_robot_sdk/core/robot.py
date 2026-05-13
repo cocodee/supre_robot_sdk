@@ -50,6 +50,18 @@ class SupreRobot(RobotInterface):
         self._manager = None
         self._is_connected = False
 
+    def diagnose_hardware(self) -> dict[str, object]:
+        if self._manager is None:
+            self._manager = HardwareManager(
+                self.config_path,
+                control_frequency=self.control_frequency,
+                use_interpolation=self.use_interpolation,
+            )
+            self._manager.init()
+        diagnostics = self._manager.diagnose()
+        diagnostics["connected"] = self._is_connected
+        return diagnostics
+
     def get_joint_positions(self) -> dict[str, float]:
         manager = self._require_manager()
         positions, _ = manager.read()

@@ -123,6 +123,9 @@ def test_supre_robot_facade(tmp_path, monkeypatch):
         "right_arm_joint_1": "position",
         "left_arm_joint_7": "position",
     }
+    diagnostics = robot.diagnose_hardware()
+    assert diagnostics["ok"] is True
+    assert diagnostics["connected"] is True
     robot.configure_torque_control(interpolation_period_ms=4, use_sync=False)
     assert robot.get_control_mode("right_arm_joint_1") == "torque"
     assert robot.get_control_mode() == {

@@ -109,6 +109,11 @@ class AsyncInterpolator(HardwareInterface):
     def write_torques(self, commands_torque_milli: list[float | None]) -> None:
         self._base_hardware.write_torques(commands_torque_milli)
 
+    def diagnose(self) -> dict[str, Any]:
+        diagnostics = self._base_hardware.diagnose()
+        diagnostics["interpolation_enabled"] = self._interpolation_enabled
+        return diagnostics
+
     def _writer_loop(self) -> None:
         assert self._stop_event is not None
         assert self._command_queue is not None

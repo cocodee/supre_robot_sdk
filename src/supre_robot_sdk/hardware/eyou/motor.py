@@ -30,6 +30,8 @@ class EyouMotorHardware(HardwareInterface):
         self._torque_interpolation_period_ms = 4
         self._torque_use_sync = True
         self._config: dict[str, Any] = {}
+        self._last_error: str | None = None
+        self._diagnostic_events: list[dict[str, Any]] = []
         self._last_log_time = time.monotonic()
         self._max_write_duration_us = 0.0
 
@@ -38,6 +40,8 @@ class EyouMotorHardware(HardwareInterface):
             raise DependencyUnavailableError("eu_motor_py is required to use EyouMotorHardware")
 
         self._config = dict(config)
+        self._last_error = None
+        self._diagnostic_events.clear()
         try:
             self._control_mode = self._normalize_control_mode(self._config.get("control_mode", "position"))
             self._torque_interpolation_period_ms = int(
@@ -78,15 +82,25 @@ class EyouMotorHardware(HardwareInterface):
                 self.motor_nodes_.append(eu_motor_py.EuMotorNode(can_device_index, node_id))
                 self.hw_start_enabled_[index] = str(start_enabled).lower() != "false"
             return True
-        except Exception:
+        except Exception as exc:
+            self._record_diagnostic_event("init", str(exc))
             return False
 
     def activate(self) -> bool:
         try:
             for index, motor in enumerate(self.motor_nodes_):
-                pos = float(motor.get_position())
-                vel = float(motor.get_velocity())
-                torque = float(motor.get_torque())
+                try:
+                    pos = float(motor.get_position())
+                    vel = float(motor.get_velocity())
+                    torque = float(motor.get_torque())
+                except Exception as exc:
+                    self._record_diagnostic_event(
+                        "activate_read",
+                        str(exc),
+                        joint_name=self._joint_name_for_index(index),
+                        node_id=self._node_id_for_index(index),
+                    )
+                    return False
                 self.hw_states_positions_[index] = pos
                 self.hw_states_velocities_[index] = vel
                 self.hw_states_torques_[index] = torque
@@ -95,6 +109,12 @@ class EyouMotorHardware(HardwareInterface):
             for index, motor in enumerate(self.motor_nodes_):
                 if self.hw_start_enabled_[index]:
                     if not self._configure_enabled_motor(index, start_feedback=True):
+                        self._record_diagnostic_event(
+                            "activate_configure",
+                            "Failed to configure enabled motor.",
+                            joint_name=self._joint_name_for_index(index),
+                            node_id=self._node_id_for_index(index),
+                        )
                         return False
                 else:
                     motor.disable()
@@ -105,7 +125,8 @@ class EyouMotorHardware(HardwareInterface):
             self.feedback_manager_ = eu_motor_py.MotorFeedbackManager.get_instance()
             self.feedback_manager_.register_callback()
             return True
-        except Exception:
+        except Exception as exc:
+            self._record_diagnostic_event("activate", str(exc))
             return False
 
     def read(self) -> list[tuple[float | None, float | None]]:
@@ -149,6 +170,30 @@ class EyouMotorHardware(HardwareInterface):
     def get_joint_count(self) -> int:
         return len(self.motor_nodes_)
 
+    def diagnose(self) -> dict[str, Any]:
+        joints = []
+        for index, joint_name in enumerate(self.joint_names_):
+            joints.append(self._diagnose_motor(index, joint_name))
+
+        ok = self._last_error is None and all(joint["ok"] for joint in joints)
+        message = "Eyou motor hardware diagnostics passed."
+        suggestion = None
+        if not ok:
+            message = self._last_error or "One or more Eyou motor nodes reported errors."
+            suggestion = (
+                "Check CAN adapter index, baud rate, motor power, CAN wiring, node IDs, and servo fault state."
+            )
+        return {
+            "type": self.__class__.__name__,
+            "ok": ok,
+            "message": message,
+            "suggestion": suggestion,
+            "can_device_index": self._config.get("can_device_index"),
+            "can_baud_rate": self._config.get("can_baud_rate"),
+            "joints": joints,
+            "events": list(self._diagnostic_events),
+        }
+
     def set_enable_torque(self, enable: bool) -> None:
         for index, motor in enumerate(self.motor_nodes_):
             if enable:
@@ -188,6 +233,146 @@ class EyouMotorHardware(HardwareInterface):
         for index, motor in enumerate(self.motor_nodes_):
             if self.hw_start_enabled_[index]:
                 motor.send_cst_target_torque(int(round(self.hw_commands_torques_[index])), 0, self._torque_use_sync)
+
+    def _diagnose_motor(self, index: int, joint_name: str) -> dict[str, Any]:
+        node_id = self._node_id_for_index(index)
+        base: dict[str, Any] = {
+            "joint_name": joint_name,
+            "node_id": node_id,
+            "ok": True,
+            "status_word": None,
+            "error_code": None,
+            "in_fault": None,
+            "operation_mode": None,
+            "latest_feedback_age_ms": None,
+            "error_history": [],
+            "last_emcy": None,
+            "warnings": [],
+            "message": "Motor node diagnostics passed.",
+            "suggestion": None,
+        }
+        if index >= len(self.motor_nodes_):
+            base.update(
+                ok=False,
+                message="Motor node was not initialized.",
+                suggestion="Check SDK config and whether initialization completed.",
+            )
+            return base
+
+        motor = self.motor_nodes_[index]
+        try:
+            if hasattr(motor, "get_diagnostics"):
+                native = motor.get_diagnostics()
+                base.update(self._convert_native_diagnostics(native))
+            else:
+                base.update(self._fallback_motor_diagnostics(motor))
+        except Exception as exc:
+            base.update(
+                ok=False,
+                message=f"Failed to read motor diagnostics: {exc}",
+                suggestion="Check CAN communication, motor power, node ID, and baud rate.",
+            )
+            return base
+
+        base["ok"] = not bool(base.get("in_fault")) and int(base.get("error_code") or 0) == 0
+        if not base["ok"]:
+            base["message"] = self._motor_error_message(base)
+            base["suggestion"] = "Check servo fault details, power cycle if needed, then clear the fault after fixing the cause."
+        return base
+
+    def _fallback_motor_diagnostics(self, motor: Any) -> dict[str, Any]:
+        diagnostics: dict[str, Any] = {"warnings": [], "error_history": []}
+        for key, method_name in (
+            ("status_word", "get_status_word"),
+            ("error_code", "get_error_code"),
+            ("operation_mode", "get_operation_mode"),
+        ):
+            try:
+                method = getattr(motor, method_name)
+                diagnostics[key] = int(method())
+            except AttributeError:
+                diagnostics["warnings"].append(f"{method_name} is not available in eu_motor_py.")
+                diagnostics[key] = None
+            except Exception as exc:
+                diagnostics["warnings"].append(f"{method_name} failed: {exc}")
+                diagnostics[key] = None
+
+        try:
+            feedback = motor.get_latest_feedback()
+            diagnostics["in_fault"] = bool(getattr(feedback, "in_fault", False))
+            diagnostics["latest_feedback_age_ms"] = None
+            if diagnostics.get("status_word") is None:
+                diagnostics["status_word"] = int(getattr(feedback, "status_word", 0))
+            if diagnostics.get("error_code") is None:
+                diagnostics["error_code"] = int(getattr(feedback, "error_code", 0))
+        except AttributeError:
+            diagnostics["in_fault"] = bool((diagnostics.get("status_word") or 0) & 0x0008)
+        except Exception as exc:
+            diagnostics["warnings"].append(f"get_latest_feedback failed: {exc}")
+            diagnostics["in_fault"] = bool((diagnostics.get("status_word") or 0) & 0x0008)
+
+        try:
+            count = int(motor.read_u8(0x1003, 0))
+            for sub_index in range(1, min(count, 8) + 1):
+                diagnostics["error_history"].append(int(motor.read_u32(0x1003, sub_index)))
+        except AttributeError:
+            diagnostics["warnings"].append("error history read methods are not available in eu_motor_py.")
+        except Exception as exc:
+            diagnostics["warnings"].append(f"error history read failed: {exc}")
+        diagnostics["last_emcy"] = None
+        return diagnostics
+
+    @staticmethod
+    def _convert_native_diagnostics(native: Any) -> dict[str, Any]:
+        last_emcy = getattr(native, "last_emcy", None)
+        return {
+            "status_word": _optional_int(getattr(native, "status_word", None)),
+            "error_code": _optional_int(getattr(native, "error_code", None)),
+            "in_fault": bool(getattr(native, "in_fault", False)),
+            "operation_mode": _optional_int(getattr(native, "operation_mode", None)),
+            "latest_feedback_age_ms": _optional_float(getattr(native, "latest_feedback_age_ms", None)),
+            "error_history": [int(value) for value in getattr(native, "error_history", [])],
+            "last_emcy": _emcy_to_dict(last_emcy),
+            "warnings": [str(value) for value in getattr(native, "warnings", [])],
+        }
+
+    @staticmethod
+    def _motor_error_message(diagnostics: dict[str, Any]) -> str:
+        status_word = diagnostics.get("status_word")
+        error_code = diagnostics.get("error_code")
+        if diagnostics.get("in_fault"):
+            return f"Motor is in fault state. status_word={_hex_or_none(status_word)}, error_code={_hex_or_none(error_code)}."
+        if int(error_code or 0) != 0:
+            return f"Motor reported error_code={_hex_or_none(error_code)}."
+        return "Motor node reported a diagnostic error."
+
+    def _record_diagnostic_event(
+        self,
+        stage: str,
+        message: str,
+        *,
+        joint_name: str | None = None,
+        node_id: int | None = None,
+    ) -> None:
+        self._last_error = message
+        event: dict[str, Any] = {"stage": stage, "message": message}
+        if joint_name is not None:
+            event["joint_name"] = joint_name
+        if node_id is not None:
+            event["node_id"] = node_id
+        self._diagnostic_events.append(event)
+
+    def _joint_name_for_index(self, index: int) -> str | None:
+        if 0 <= index < len(self.joint_names_):
+            return self.joint_names_[index]
+        return None
+
+    def _node_id_for_index(self, index: int) -> int | None:
+        try:
+            joint = self._config["joints"][index]
+            return int(joint["parameters"]["node_id"])
+        except Exception:
+            return None
 
     @staticmethod
     def _normalize_control_mode(raw_mode: Any) -> str:
@@ -236,3 +421,39 @@ class EyouMotorHardware(HardwareInterface):
                 ]
             )
         return all(steps)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _emcy_to_dict(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return {
+        "node_id": _optional_int(getattr(value, "node_id", None)),
+        "error_code": _optional_int(getattr(value, "error_code", None)),
+        "error_register": _optional_int(getattr(value, "error_register", None)),
+        "manufacturer_specific": [int(item) for item in getattr(value, "manufacturer_specific", [])],
+    }
+
+
+def _hex_or_none(value: Any) -> str:
+    numeric = _optional_int(value)
+    if numeric is None:
+        return "unknown"
+    return f"0x{numeric:04x}"

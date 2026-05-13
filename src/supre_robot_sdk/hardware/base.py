@@ -64,3 +64,12 @@ class HardwareInterface(ABC):
     def write_torques(self, commands_torque_milli: list[float | None]) -> None:
         del commands_torque_milli
         raise NotImplementedError(f"{self.__class__.__name__} does not support torque control.")
+
+    def diagnose(self) -> dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+            "ok": True,
+            "message": "No hardware-specific diagnostics are available.",
+            "joints": [],
+            "events": [],
+        }
